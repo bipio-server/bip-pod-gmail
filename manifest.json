@@ -37,6 +37,7 @@
     ]
   },
   "rpcs": {},
+  "rateLimit": 100,
   "actions": {
     "send": {
       "doc_ref": "https://developers.google.com/gmail/api/v1/reference/",

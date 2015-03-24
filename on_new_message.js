@@ -28,9 +28,9 @@ OnNewMessage.prototype.trigger = function(imports, channel, sysImports, contentP
     uid = 'me',
     auth = self.pod.getOAuthClient(sysImports),
     $resource = this.$resource,
-    rateLimit = 100, // gmail api limit is 250/sec/user.  This should ultimately requeue on
-    queue = [],
-    popper;
+	limitRate = self.pod.limitRate,
+	rateLimit = self.pod.getRateLimit();
+	
 
   this.invoke(imports, channel, sysImports, contentParts, function(err, message) {
     if (err) {
@@ -42,67 +42,59 @@ OnNewMessage.prototype.trigger = function(imports, channel, sysImports, contentP
         if (err) {
           next(err);
         } else {
-
-          if (!popper) {
-            popper = setInterval(function() {
-              if (queue.length) {
-                queue.pop()();
-              } else {
-                clearInterval(popper);
-              }
-
-            }, 1000 / rateLimit);
-          }
-
           // fetch mail if it's not a dup
           params.auth = auth;
           params.userId = uid;
           params.id = message.id;
 
-          queue.push((function(params, next) {
-            return function() {
-              gmail.users.messages.get(params, function(err, body, res) {
-                if (err) {
-                  next(err);
-                } else {
-                  var exports = {
-                      mimeType : body.payload.mimeType
-                    },
-                    header,
-                    part;
 
-                  // export headers
-                  for (var i = 0; i < body.payload.headers.length; i++) {
-                    header = body.payload.headers[i];
-                    exports[header.name] = header.value;
-                  }
+			var throttled = function(params, next) {
+				console.log('returning next gmail.users.messages.get');
+				gmail.users.messages.get(params, function(err, body, res) {
+					if (err) {
+					next(err);
+					} else {
+					var exports = {
+						mimeType : body.payload.mimeType
+						},
+						header,
+						part;
+
+					// export headers
+					for (var i = 0; i < body.payload.headers.length; i++) {
+						header = body.payload.headers[i];
+						exports[header.name] = header.value;
+					}
 
 
-                  if (body.payload && body.payload.parts) {
-                    for (var i = 0; i < body.payload.parts.length; i++) {
-                      part = body.payload.parts[i];
-                      if (part.body.size && part.body.data) {
-                        var buff = new Buffer(part.body.size);
-                        buff.write(part.body.data, 'base64');
+					if (body.payload && body.payload.parts) {
+						for (var i = 0; i < body.payload.parts.length; i++) {
+						part = body.payload.parts[i];
+						if (part.body.size && part.body.data) {
+							var buff = new Buffer(part.body.size);
+							buff.write(part.body.data, 'base64');
 
-                        // @todo - object too large
-                        if ('text/html' === part.mimeType) {
-//                          exports.html_body = buff.toString('utf8');
-                        } else if ('text/plain') {
-                          exports.text_body = buff.toString('utf8');
-                        }
-                      } else if (part.body.attachmentId) {
-                          // @todo - get file
-                      }
-                    }
-                  }
+							// @todo - object too large
+							if ('text/html' === part.mimeType) {
+	//                          exports.html_body = buff.toString('utf8');
+							} else if ('text/plain') {
+							exports.text_body = buff.toString('utf8');
+							}
+						} else if (part.body.attachmentId) {
+							// @todo - get file
+						}
+						}
+					}
 
-                  next(false, exports);
-                }
-              });
-            }
-          })(params, next));
-        }
+					next(false, exports);
+					}
+				});
+
+			}
+
+			limitRate(throttled(params,next), rateLimit)
+		}
+
       });
     }
   });
