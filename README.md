@@ -1,3 +1,4 @@
+# **NOTICE:** This repository has been **DEPRECATED**. Do not use.
 ![Gmail](gmail.png) bip-pod-gmail
 =======
 
